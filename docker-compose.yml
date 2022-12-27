@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:14.2-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: mydatabase
+      PGDATA: /data/mydatabase
+    volumes:
+      - pgstore:/var/lib/postgresql/data
+    ports:
+      - '5432:5432'
+    restart: unless-stopped
+
+
+volumes:
+  pgstore:
+  pgadmin:
