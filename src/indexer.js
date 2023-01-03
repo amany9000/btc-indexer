@@ -1,51 +1,50 @@
-
-import * as bitcoin from 'bitcoinjs-lib';
-import * as zmq from 'zeromq';
-import models from './models';
-import {rpc} from './sync'
+import * as bitcoin from "bitcoinjs-lib";
+import * as zmq from "zeromq";
+import models from "./models";
+import { rpc } from "./sync";
 
 function indexer() {
-  var sock = zmq.socket('sub');
+  var sock = zmq.socket("sub");
   var addr = process.env.ZMQ_ADDRESS;
 
   sock.connect(addr);
 
   // Subscribe to receive messages for a specific topic.
   // This can be "rawblock", "hashblock", "rawtx", or "hashtx".
-  sock.subscribe('rawblock');
+  sock.subscribe("rawblock");
 
-  console.log("Zeromq Indexer started")
-  sock.on('message', async function(topic, message) {
+  console.log("Zeromq Indexer started");
+  sock.on("message", async function (topic, message) {
+    if (topic.toString() === "rawblock") {
+      const rawblock = message.toString("hex");
 
-      if (topic.toString() === 'rawblock') {
+      const block = bitcoin.Block.fromHex(rawblock);
 
-          const rawblock = message.toString('hex');
+      console.log("New block incoming: ", block);
+      const blockHash = block.getId();
 
-          const block = bitcoin.Block.fromHex(rawblock);
+      rpc.getBlock(blockHash, async function (err, { result: rpcBlock }) {
+        await models.Block.create({
+          height: rpcBlock.height,
+          hash: blockHash,
+          transactions: rpcBlock.tx,
+        });
 
-          console.log("New block incoming: ", block)
-          const blockHash = block.getId();
+        block.transactions.forEach(async (trans) => {
+          trans.outs.forEach(async (out) => {
+            let vout = out.script.toString("hex");
 
-          rpc.getBlock(blockHash, async function(err, {result: rpcBlock}){
-            await models.Block.create({"height": rpcBlock.height, "hash":blockHash,  "transactions": rpcBlock.tx})
-          
-            block.transactions.forEach(async (trans) => {
-              
-              trans.outs.forEach(async (out) => {
-                let vout = out.script.toString("hex")
-      
-                if (vout.slice(0,2) == "6a"){
-                  const hash = trans.getId();
-                  const data = vout.substring(4);
-                  console.log("Transaction: ", hash)
-                  console.log("OP_RETURN DATA: ", data)
-                  await models.Transaction.create({"hash": hash, ORD: data})    
-                }
-              })
-            })
-          })
-
-      }
+            if (vout.slice(0, 2) == "6a") {
+              const hash = trans.getId();
+              const data = vout.substring(4);
+              console.log("Transaction: ", hash);
+              console.log("OP_RETURN DATA: ", data);
+              await models.Transaction.create({ hash: hash, ORD: data });
+            }
+          });
+        });
+      });
+    }
   });
 }
 /*
